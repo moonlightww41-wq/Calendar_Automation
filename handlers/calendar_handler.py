@@ -18,6 +18,7 @@ from services.outlook_service import (
     update_outlook_event,
     delete_outlook_event,
     find_outlook_event,
+    find_outlook_events_in_range,
 )
 from services.sheets_service import append_event_index, search_event_index
 
@@ -226,6 +227,8 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
 
         deleted_count = 0
         deleted_titles = []
+
+        # Googleカレンダーから全件削除
         for event in gcal_events:
             ev_id = event.get("id", "")
             ev_title = event.get("summary", "予定")
@@ -244,6 +247,21 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
                 )
                 deleted_count += 1
                 deleted_titles.append((ev_title, ev_start))
+
+        # Outlookカレンダーからも全件削除
+        try:
+            outlook_events = await find_outlook_events_in_range(range_start, range_end)
+            for ov in outlook_events:
+                ov_id = ov.get("id", "")
+                ov_title = ov.get("subject", "")
+                if ov_id:
+                    try:
+                        await delete_outlook_event(ov_id)
+                        logger.info(f"Outlook一括削除: {ov_title}")
+                    except Exception as e:
+                        logger.error(f"Outlook一括削除エラー ({ov_title}): {e}")
+        except Exception as e:
+            logger.error(f"Outlook期間検索エラー: {e}")
 
         return {
             "action": "delete",

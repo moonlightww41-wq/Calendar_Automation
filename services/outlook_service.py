@@ -88,9 +88,47 @@ async def update_outlook_event(event_id, title=None, start_at=None, end_at=None,
 async def delete_outlook_event(event_id: str):
     encoded_id = urllib.parse.quote(event_id)
     r = requests.delete(f"{_cal_url()}/{encoded_id}", headers=_headers())
+    if r.status_code == 404:
+        logger.warning(f"Outlook削除スキップ(不在): {event_id[:20]}...")
+        return
     if r.status_code != 204:
         raise RuntimeError(f"Outlook削除失敗: {r.status_code}")
     logger.info(f"Outlook削除: {event_id[:20]}...")
+
+
+async def find_outlook_events_in_range(range_start: str, range_end: str) -> list:
+    """
+    指定期間内のOutlookイベントを全件取得（一括削除用）
+    range_start/range_end: MM/DD HH:MM 形式 or ISO形式
+    """
+    import re as _re
+    now = datetime.now(JST)
+
+    def _parse_dt(date_str: str, is_end: bool = False) -> str:
+        m = _re.match(r"^(\d{1,2})/(\d{1,2})", date_str)
+        if m:
+            month, day = int(m.group(1)), int(m.group(2))
+            year = now.year if month >= now.month - 6 else now.year + 1
+            from datetime import timedelta as _td
+            dt = datetime(year, month, day, 0, 0)
+            if is_end:
+                dt = dt + _td(days=1)  # 終端日の翌日00時にして終端日を含める
+            return dt.strftime("%Y-%m-%dT%H:%M:%S")
+        return date_str[:19]  # ISO形式なら先頤19文字
+
+    t_min = _parse_dt(range_start, is_end=False)
+    t_max = _parse_dt(range_end, is_end=True)
+
+    params = {
+        "$filter": f"start/dateTime ge '{t_min}' and start/dateTime le '{t_max}'",
+        "$top": 250,
+        "$select": "id,subject,start,end",
+    }
+    r = requests.get(_cal_url(), headers=_headers(), params=params)
+    if r.status_code != 200:
+        logger.warning(f"Outlook期間検索失敗: {r.status_code}")
+        return []
+    return r.json().get("value", [])
 
 
 async def find_outlook_event(title_hint="", start_iso=None) -> dict | None:
