@@ -25,8 +25,20 @@ logger = logging.getLogger("webhook")
 
 def verify_signature(body: bytes, signature: str) -> bool:
     """LINE署名を検証する"""
-    # テスト環境のため署名検証をスキップ
-    return True
+    channel_secret = config.LINE_CHANNEL_SECRET
+    if not channel_secret:
+        logger.warning("LINE_CHANNEL_SECRETが未設定のため署名検証をスキップ")
+        return True
+    if not signature:
+        return False
+    hash_val = hmac.new(
+        channel_secret.encode("utf-8"),
+        body,
+        hashlib.sha256,
+    ).digest()
+    expected = base64.b64encode(hash_val).decode("utf-8")
+    return hmac.compare_digest(expected, signature)
+
 
 
 def generate_request_id() -> str:

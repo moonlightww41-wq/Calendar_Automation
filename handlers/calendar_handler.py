@@ -289,7 +289,7 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
     )
 
     if not index_entry:
-        # Google Calendarから直接検索して削除を試みる
+        # Google Calendarから直接検索
         gcal_event = await find_gcal_event(
             title_hint=title_hint,
             start_iso=op.get("start_at"),
@@ -299,6 +299,48 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
             gcal_event_id = gcal_event.get("id", "")
             outlook_event_id = ""
         else:
+            # Googleで見つからなかった場合、Outlookも検索する
+            try:
+                ov_event = await find_outlook_event(
+                    title_hint=title_hint,
+                    start_iso=op.get("start_at"),
+                )
+            except Exception as e:
+                logger.error(f"Outlook単件検索エラー: {e}")
+                ov_event = None
+
+            if ov_event:
+                gcal_event_id = ""
+                outlook_event_id = ov_event.get("id", "")
+                # Outlookのみ削除ケースの情報を設定
+                deleted_title = ov_event.get("subject", title_hint)
+                deleted_start = ov_event.get("start", {}).get("dateTime", "")
+                deleted_end = ov_event.get("end", {}).get("dateTime", "")
+
+                if outlook_event_id:
+                    try:
+                        await delete_outlook_event(outlook_event_id)
+                    except Exception as e:
+                        logger.error(f"Outlook単件削除エラー: {e}")
+
+                await append_event_index(
+                    line_user_id=user_id,
+                    event_id="",
+                    action="delete",
+                    title=deleted_title,
+                    start_at=deleted_start,
+                    end_at=deleted_end,
+                    line_to=line_to,
+                    outlook_event_id="",
+                )
+                return {
+                    "action": "delete",
+                    "status": "ok",
+                    "title": deleted_title,
+                    "start_at": deleted_start,
+                    "end_at": deleted_end,
+                }
+
             return {
                 "action": "delete",
                 "status": "skip",

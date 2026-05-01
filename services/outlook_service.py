@@ -133,15 +133,44 @@ async def find_outlook_events_in_range(range_start: str, range_end: str) -> list
 
 
 
-async def find_outlook_event(title_hint="", start_iso=None) -> dict | None:
+async def find_outlook_event(title_hint: str = "", start_iso: str = None) -> dict | None:
+    """Outlookカレンダーから単件予定を検索する（変更・削除用）"""
+    import re as _re
     now = datetime.now(JST)
-    t_min = (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
-    t_max = (now + timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%S")
-    params = {"$filter": f"start/dateTime ge '{t_min}' and start/dateTime le '{t_max}'", "$top": 50}
-    r = requests.get(_cal_url(), headers=_headers(), params=params)
+
+    # 検索範囲: 前後180日
+    t_min = (now - timedelta(days=180)).strftime("%Y-%m-%dT%H:%M:%S")
+    t_max = (now + timedelta(days=180)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    url = f"{GRAPH_API_BASE}/users/{config.OUTLOOK_USER_EMAIL}/calendarView"
+    params = {
+        "startDateTime": t_min,
+        "endDateTime": t_max,
+        "$select": "id,subject,start,end",
+        "$top": 250,
+    }
+    r = requests.get(url, headers=_headers(), params=params)
     if r.status_code != 200:
+        logger.warning(f"Outlook単件検索失敗: {r.status_code}")
         return None
-    for ev in r.json().get("value", []):
-        if title_hint and (title_hint in ev.get("subject", "") or ev.get("subject", "") in title_hint):
+
+    events = r.json().get("value", [])
+
+    # title_hintからMM/DD形式を除いたキーワードで検索
+    keywords = []
+    if title_hint:
+        for token in title_hint.split():
+            if not _re.match(r"^\d{1,2}/\d{1,2}$", token):
+                keywords.append(token)
+
+    for ev in events:
+        subject = ev.get("subject", "")
+        if keywords and any(kw in subject or subject in kw for kw in keywords):
             return ev
+        if not keywords and start_iso:
+            ev_start = ev.get("start", {}).get("dateTime", "")
+            if start_iso[:16] in ev_start:
+                return ev
+
     return None
+

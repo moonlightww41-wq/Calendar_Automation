@@ -161,28 +161,25 @@ async def find_gcal_event(
     """
     import re as _re
     service = _get_service()
+    now = datetime.now(JST)
 
     # range_start（MM/DD形式）から年込みのISO日付を組み立てる
     range_start = (query or {}).get("range_start", "")
     range_date_str = None
     if range_start:
-        m = _re.match(r"^(\d{1,2})/(\d{1,2})", range_start)
-        if m:
-            now = datetime.now(JST)
-            month, day = int(m.group(1)), int(m.group(2))
-            year = now.year if month >= now.month - 2 else now.year + 1
-            range_date_str = f"{year:04d}-{month:02d}-{day:02d}"
+        dt = parse_mmdd_to_date(range_start, now)
+        if dt:
+            range_date_str = dt.strftime("%Y-%m-%d")
 
-    # 検索範囲を決定（前後60日）
-    now = datetime.now(JST)
-    time_min = (now - timedelta(days=60)).isoformat()
-    time_max = (now + timedelta(days=60)).isoformat()
+    # 検索範囲を前後180日（過去の予定も変更・削除できるよう広げる）
+    time_min = (now - timedelta(days=180)).isoformat()
+    time_max = (now + timedelta(days=180)).isoformat()
 
     events_result = service.events().list(
         calendarId=config.GOOGLE_CALENDAR_ID,
         timeMin=time_min,
         timeMax=time_max,
-        maxResults=100,
+        maxResults=250,
         singleEvents=True,
         orderBy="startTime",
     ).execute()
@@ -231,4 +228,3 @@ async def find_gcal_event(
                 return event
 
     return None
-
