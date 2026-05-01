@@ -1,6 +1,5 @@
 FROM python:3.12-slim
 
-# 作業フォルダを設定
 WORKDIR /app
 
 # 依存パッケージをインストール
@@ -10,8 +9,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # アプリのコードをコピー
 COPY . .
 
-# ポート8002を公開
+# credentialsフォルダを作成
+RUN mkdir -p credentials
+
 EXPOSE 8002
 
-# 起動コマンド
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+# 起動スクリプト：シークレットからcredentialsファイルを復元してからサーバー起動
+CMD ["sh", "-c", "echo \"$GOOGLE_CREDENTIALS_JSON\" > credentials/google_credentials.json && uvicorn main:app --host 0.0.0.0 --port 8002"]
