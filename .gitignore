@@ -1,0 +1,38 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# 機密情報
+.env
+credentials/
+
+# ログ・出力
+logs/
+*.log
+output/
+*.db
+
+# テスト用スクリプト（本番不要）
+test_*.py
+check_*.py
+fetch_*.py
+
+# デプロイ用（別方式）
+自宅PC用_*.bat
+自宅PC用_*.vbs
+本番へデプロイ.bat
+start_background.vbs
+start_watcher.vbs
+_deploy_temp/
+last_deploy.txt
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
