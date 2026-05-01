@@ -117,7 +117,7 @@ def build_reply_message(results: dict) -> str:
                     f"🗑️ {deleted_count}件の予定を削除しました\n\n"
                     f"📅 期間：{date_range}\n"
                     f"{title_lines}\n"
-                    f"Googleカレンダーから削除済み"
+                    f"Google・Outlook 両方から削除済み"
                 )
             else:
                 # 単件削除
