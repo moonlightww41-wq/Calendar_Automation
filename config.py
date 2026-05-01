@@ -35,7 +35,7 @@ AZURE_CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET", "")
 OUTLOOK_USER_EMAIL = os.getenv("OUTLOOK_USER_EMAIL", "y-yamada@noden.co.jp")
 
 # --- Server ---
-PORT = int(os.getenv("PORT", "8000"))
+PORT = int(os.getenv("PORT", "8002"))
 
 # --- Sheets ---
 EXEC_LOG_SHEET = "ExecLog"
