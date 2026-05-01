@@ -16,7 +16,7 @@ LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
 
 # --- OpenAI ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL = "gpt-5-nano"  # 最軽量モデル
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")  # 自然言語理解に適したモデル
 
 # --- Google ---
 GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "noden.yy@gmail.com")
