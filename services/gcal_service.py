@@ -117,43 +117,71 @@ async def find_gcal_event(
     Google Calendarから予定を検索する
     変更・削除時にevent_idが不明な場合に使用
     """
+    import re as _re
     service = _get_service()
 
-    # 検索範囲を決定（前後30日）
-    now = datetime.now(JST)
-    time_min = (now - timedelta(days=30)).isoformat()
-    time_max = (now + timedelta(days=60)).isoformat()
+    # range_start（MM/DD形式）から年込みのISO日付を組み立てる
+    range_start = (query or {}).get("range_start", "")
+    range_date_str = None
+    if range_start:
+        m = _re.match(r"^(\d{1,2})/(\d{1,2})", range_start)
+        if m:
+            now = datetime.now(JST)
+            month, day = int(m.group(1)), int(m.group(2))
+            year = now.year if month >= now.month - 2 else now.year + 1
+            range_date_str = f"{year:04d}-{month:02d}-{day:02d}"
 
-    if query:
-        if query.get("range_start"):
-            # range_start がMM/DD形式の場合の処理
-            pass  # AI側でISO変換済みの前提
+    # 検索範囲を決定（前後60日）
+    now = datetime.now(JST)
+    time_min = (now - timedelta(days=60)).isoformat()
+    time_max = (now + timedelta(days=60)).isoformat()
 
     events_result = service.events().list(
         calendarId=config.GOOGLE_CALENDAR_ID,
         timeMin=time_min,
         timeMax=time_max,
-        maxResults=50,
+        maxResults=100,
         singleEvents=True,
         orderBy="startTime",
     ).execute()
 
     events = events_result.get("items", [])
 
-    # タイトルヒントでフィルタ
+    # title_hintからMM/DD形式を除いたキーワードリストを作成
+    keywords = []
     if title_hint:
+        for token in title_hint.split():
+            if not _re.match(r"^\d{1,2}/\d{1,2}$", token):
+                keywords.append(token)
+
+    def _title_matches(summary: str) -> bool:
+        if not keywords:
+            return False
+        for kw in keywords:
+            if kw in summary or summary in kw:
+                return True
+        return False
+
+    def _date_matches(event: dict) -> bool:
+        """イベントがrange_dateと同じ日付か確認"""
+        if not range_date_str:
+            return True  # 日付指定なしは全てOK
+        ev_start = event.get("start", {}).get("dateTime") or event.get("start", {}).get("date", "")
+        return ev_start.startswith(range_date_str)
+
+    # タイトル＋日付でフィルタ
+    if keywords:
         for event in events:
             summary = event.get("summary", "")
-            if title_hint in summary or summary in title_hint:
-                # 開始日時でも絞り込み
-                if start_iso:
-                    event_start = event.get("start", {}).get("dateTime", "")
-                    if start_iso[:16] == event_start[:16]:
-                        return event
-                else:
-                    return event
+            if _title_matches(summary) and _date_matches(event):
+                return event
+        # 日付なしでタイトルだけの再検索（フォールバック）
+        for event in events:
+            summary = event.get("summary", "")
+            if _title_matches(summary):
+                return event
 
-    # タイトルヒントなしの場合、開始日時で検索
+    # start_isoが指定されている場合
     if start_iso:
         for event in events:
             event_start = event.get("start", {}).get("dateTime", "")
@@ -161,3 +189,4 @@ async def find_gcal_event(
                 return event
 
     return None
+

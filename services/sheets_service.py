@@ -74,6 +74,25 @@ async def search_event_index(title_hint="", range_start="") -> dict | None:
     if not rows:
         return None
 
+    # title_hint から日付っぽいトークン（MM/DD形式）を除いてキーワード化
+    # 例: "現場視察 04/21" → ["現場視察"]
+    import re as _re
+    keywords = []
+    if title_hint:
+        for token in title_hint.split():
+            if not _re.match(r"^\d{1,2}/\d{1,2}$", token):  # MM/DD形式を除外
+                keywords.append(token)
+
+    def _matches(row_title: str) -> bool:
+        """タイトルがキーワードのいずれかにマッチするか確認"""
+        if not keywords:
+            return False
+        for kw in keywords:
+            # キーワードがタイトルに含まれる、またはタイトルがキーワードに含まれる
+            if kw in row_title or row_title in kw:
+                return True
+        return False
+
     # 最新のものから検索（逆順）
     for row in reversed(rows[1:]):  # ヘッダーをスキップ
         if len(row) < 7:
@@ -86,8 +105,8 @@ async def search_event_index(title_hint="", range_start="") -> dict | None:
         if row_action == "delete":
             continue
 
-        # タイトルマッチ
-        if title_hint and (title_hint in row_title or row_title in title_hint):
+        # タイトルマッチ（キーワード方式）
+        if _matches(row_title):
             return {
                 "event_id": row[2] if len(row) > 2 else "",
                 "title": row_title,
@@ -97,3 +116,4 @@ async def search_event_index(title_hint="", range_start="") -> dict | None:
             }
 
     return None
+
