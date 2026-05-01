@@ -101,16 +101,27 @@ def build_reply_message(results: dict) -> str:
                 )
 
         elif action == "delete":
-            title = result.get("title", "予定")
-            time_range = _format_time_range(
-                result.get("start_at", ""), result.get("end_at", "")
-            )
-            messages.append(
-                f"🗑️ 予定を削除しました\n\n"
-                f"{time_range}\n"
-                f"📝 {title}\n\n"
-                f"Google・Outlook 両方から削除済み"
-            )
+            deleted_count = result.get("deleted_count")
+            if deleted_count is not None:
+                # 一括削除
+                date_range = result.get("range", "")
+                messages.append(
+                    f"🗑️ {deleted_count}件の予定を削除しました\n\n"
+                    f"📅 期間：{date_range}\n\n"
+                    f"Google両方から削除済み"
+                )
+            else:
+                # 単件削除
+                title = result.get("title", "予定")
+                time_range = _format_time_range(
+                    result.get("start_at", ""), result.get("end_at", "")
+                )
+                messages.append(
+                    f"🗑️ 予定を削除しました\n\n"
+                    f"{time_range}\n"
+                    f"📝 {title}\n\n"
+                    f"Google・Outlook 両方から削除済み"
+                )
 
     return "\n\n---\n\n".join(messages) if messages else "処理が完了しました"
 

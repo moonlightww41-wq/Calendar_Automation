@@ -11,6 +11,7 @@ from services.gcal_service import (
     update_gcal_event,
     delete_gcal_event,
     find_gcal_event,
+    find_gcal_events_in_range,
 )
 from services.outlook_service import (
     add_outlook_event,
@@ -210,7 +211,45 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
     """予定を削除する（Google + Outlook 両方）"""
     query = op.get("query", {}) or {}
     title_hint = query.get("title_hint", "")
+    delete_all = op.get("delete_all_in_range", False)
 
+    # ─── 一括削除（期間内の全イベント）───────────────────────────
+    if delete_all:
+        range_start = query.get("range_start", "")
+        range_end = query.get("range_end", "")
+        if not range_start or not range_end:
+            return {"action": "delete", "status": "skip", "reason": "一括削除には範囲（range_start〜range_end）が必要です"}
+
+        gcal_events = await find_gcal_events_in_range(range_start, range_end)
+        if not gcal_events:
+            return {"action": "delete", "status": "skip", "reason": f"{range_start}〜{range_end} の範囲に予定が見つかりませんでした"}
+
+        deleted_count = 0
+        for event in gcal_events:
+            ev_id = event.get("id", "")
+            ev_title = event.get("summary", "予定")
+            if ev_id:
+                await delete_gcal_event(ev_id)
+                await append_event_index(
+                    line_user_id=user_id,
+                    event_id=ev_id,
+                    action="delete",
+                    title=ev_title,
+                    start_at=event.get("start", {}).get("dateTime", ""),
+                    end_at=event.get("end", {}).get("dateTime", ""),
+                    line_to=line_to,
+                    outlook_event_id="",
+                )
+                deleted_count += 1
+
+        return {
+            "action": "delete",
+            "status": "ok",
+            "deleted_count": deleted_count,
+            "range": f"{range_start}〜{range_end}",
+        }
+
+    # ─── 単件削除 ─────────────────────────────────────────────────
     # EventIndex から対象を検索
     index_entry = await search_event_index(
         title_hint=title_hint,
@@ -231,7 +270,7 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
             return {
                 "action": "delete",
                 "status": "skip",
-                "reason": f"対象の予定が見つかりませんでした: {title_hint}",
+                "reason": f"対象の予定が見つかりませんでした: {title_hint} {query.get('range_start', '')}",
             }
     else:
         gcal_event_id = index_entry.get("event_id", "")
@@ -241,7 +280,7 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
     deleted_start = index_entry.get("start_at", "") if index_entry else ""
     deleted_end = index_entry.get("end_at", "") if index_entry else ""
 
-    # Google Calendar から削除
+    # Google Calendar から削除（404はスキップ）
     if gcal_event_id:
         await delete_gcal_event(gcal_event_id)
 
@@ -271,3 +310,4 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
         "start_at": deleted_start,
         "end_at": deleted_end,
     }
+

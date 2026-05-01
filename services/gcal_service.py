@@ -101,13 +101,59 @@ async def update_gcal_event(
 
 
 async def delete_gcal_event(event_id: str):
-    """Google Calendarの予定を削除する"""
+    """Google Calendarの予定を削除する（404の場合はスキップ）"""
+    from googleapiclient.errors import HttpError
     service = _get_service()
-    service.events().delete(
+    try:
+        service.events().delete(
+            calendarId=config.GOOGLE_CALENDAR_ID,
+            eventId=event_id,
+        ).execute()
+        logger.info(f"GCal削除: {event_id}")
+    except HttpError as e:
+        if e.resp.status == 404:
+            logger.warning(f"GCal削除スキップ(不在): {event_id}")
+        else:
+            raise
+
+
+async def find_gcal_events_in_range(range_start: str, range_end: str) -> list:
+    """
+    指定期間内の全イベントを取得する（一括削除用）
+    range_start/range_end: MM/DD HH:MM 形式 or ISO形式
+    """
+    import re as _re
+    now = datetime.now(JST)
+
+    def _parse_date(date_str: str) -> str:
+        """MM/DD HH:MM 形式またはISO形式をISOに変換"""
+        if not date_str:
+            return None
+        m = _re.match(r"^(\d{1,2})/(\d{1,2})", date_str)
+        if m:
+            month, day = int(m.group(1)), int(m.group(2))
+            year = now.year if month >= now.month - 6 else now.year + 1
+            return datetime(year, month, day, 0, 0, tzinfo=JST).isoformat()
+        return date_str  # すでにISO形式ならそのまま返す
+
+    time_min = _parse_date(range_start)
+    time_max = _parse_date(range_end)
+
+    if not time_min or not time_max:
+        return []
+
+    service = _get_service()
+    events_result = service.events().list(
         calendarId=config.GOOGLE_CALENDAR_ID,
-        eventId=event_id,
+        timeMin=time_min,
+        timeMax=time_max,
+        maxResults=250,
+        singleEvents=True,
+        orderBy="startTime",
     ).execute()
-    logger.info(f"GCal削除: {event_id}")
+
+    return events_result.get("items", [])
+
 
 
 async def find_gcal_event(
