@@ -4,6 +4,7 @@ Google Calendar Service - Google Calendar API操作
 予定の追加・変更・削除・検索を行う
 """
 import logging
+import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -24,10 +25,16 @@ def _get_service():
     """Google Calendar API サービスを取得する（シングルトン）"""
     global _service
     if _service is None:
-        creds = Credentials.from_service_account_file(
-            config.GOOGLE_CREDENTIALS_PATH,
-            scopes=SCOPES,
-        )
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
+        if creds_json:
+            import json as _json
+            creds_info = _json.loads(creds_json)
+            creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
+        else:
+            creds = Credentials.from_service_account_file(
+                config.GOOGLE_CREDENTIALS_PATH,
+                scopes=SCOPES,
+            )
         _service = build("calendar", "v3", credentials=creds)
     return _service
 
