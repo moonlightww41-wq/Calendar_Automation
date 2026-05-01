@@ -221,9 +221,17 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
         if not range_start or not range_end:
             return {"action": "delete", "status": "skip", "reason": "一括削除には範囲（range_start〜range_end）が必要です"}
 
+        # Google と Outlook を並行して先に両方検索
         gcal_events = await find_gcal_events_in_range(range_start, range_end, inclusive_end=True)
-        if not gcal_events:
-            return {"action": "delete", "status": "skip", "reason": f"{range_start}〜{range_end} の範囲に予定が見つかりませんでした"}
+        try:
+            outlook_events = await find_outlook_events_in_range(range_start, range_end)
+        except Exception as e:
+            logger.error(f"Outlook期間検索エラー: {e}")
+            outlook_events = []
+
+        # 両方0件なら「見つかりませんでした」
+        if not gcal_events and not outlook_events:
+            return {"action": "delete", "status": "skip", "reason": f"{range_start}〜{range_end} の範囲に予定が見つかりませんでした（Google・Outlook両方）"}
 
         deleted_count = 0
         deleted_titles = []
@@ -248,20 +256,22 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
                 deleted_count += 1
                 deleted_titles.append((ev_title, ev_start))
 
-        # Outlookカレンダーからも全件削除
-        try:
-            outlook_events = await find_outlook_events_in_range(range_start, range_end)
-            for ov in outlook_events:
-                ov_id = ov.get("id", "")
-                ov_title = ov.get("subject", "")
-                if ov_id:
-                    try:
-                        await delete_outlook_event(ov_id)
-                        logger.info(f"Outlook一括削除: {ov_title}")
-                    except Exception as e:
-                        logger.error(f"Outlook一括削除エラー ({ov_title}): {e}")
-        except Exception as e:
-            logger.error(f"Outlook期間検索エラー: {e}")
+        # Outlookカレンダーから全件削除（Googleと独立して実行）
+        for ov in outlook_events:
+            ov_id = ov.get("id", "")
+            ov_title = ov.get("subject", "予定")
+            ov_start = ov.get("start", {}).get("dateTime", "")
+            if ov_id:
+                try:
+                    await delete_outlook_event(ov_id)
+                    logger.info(f"Outlook一括削除: {ov_title}")
+                    # Googleに同名がなかった場合のみリストに追加
+                    already_listed = any(t == ov_title for t, _ in deleted_titles)
+                    if not already_listed:
+                        deleted_titles.append((ov_title, ov_start))
+                        deleted_count += 1
+                except Exception as e:
+                    logger.error(f"Outlook一括削除エラー ({ov_title}): {e}")
 
         return {
             "action": "delete",
