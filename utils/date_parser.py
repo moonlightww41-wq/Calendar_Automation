@@ -58,3 +58,85 @@ def contains_date(text: str) -> bool:
     if ACTION_REGEX.search(text):
         return True
     return False
+
+
+def resolve_month_to_year(month: int, day: int, now: datetime) -> int:
+    """
+    月・日から最も適切な「年」を決定する。
+    「今日に一番近い日付」を基準に判断する。
+
+    例（今日が2026年5月2日の場合）:
+    ・4月  → 2026年4月（10日前 → 近い）
+    ・1月  → 2026年1月（4ヶ月前 → 許容範囲内）
+    ・12月 → 2026年12月（7ヶ月後 → 近い）
+
+    例（今日が2026年12月15日の場合）:
+    ・1月  → 2027年1月（今年は11ヶ月前→遠い、来年は17日後→近い）
+    ・11月 → 2026年11月（先月）
+
+    ルール: this_year版とnext_year版のうち、
+    「今日との差の絶対値が小さい方」を選ぶ。
+    ただし「過去イベントへの操作」もあるため、
+    過去6ヶ月以内はthis_yearを優先する。
+    """
+    import calendar as _calendar
+
+    # 月末を超える日の補正
+    try:
+        this_year = datetime(now.year, month, day, tzinfo=now.tzinfo)
+    except ValueError:
+        # 月末オーバー（例：2月31日）→ 月末に丸める
+        last_day = _calendar.monthrange(now.year, month)[1]
+        this_year = datetime(now.year, month, last_day, tzinfo=now.tzinfo)
+
+    try:
+        next_year = datetime(now.year + 1, month, day, tzinfo=now.tzinfo)
+    except ValueError:
+        last_day = _calendar.monthrange(now.year + 1, month)[1]
+        next_year = datetime(now.year + 1, month, last_day, tzinfo=now.tzinfo)
+
+    try:
+        prev_year = datetime(now.year - 1, month, day, tzinfo=now.tzinfo)
+    except ValueError:
+        prev_year = this_year  # フォールバック
+
+    diff_this = abs((this_year - now).days)
+    diff_next = abs((next_year - now).days)
+    diff_prev = abs((prev_year - now).days)
+
+    # 過去6ヶ月以内（180日以内の過去）はthis_yearを優先
+    # これにより「先月の予定を操作する」が正しく動く
+    days_ago = (now - this_year).days
+    if 0 <= days_ago <= 180:
+        return now.year
+
+    # this_yearが未来の場合、prev_yearは候補から除外（過去年の未来日はあり得ない）
+    # → next_year vs this_year の比較のみ
+    if this_year > now:
+        return now.year + 1 if diff_next < diff_this else now.year
+
+    # それ以外は最も今日に近い年を選ぶ（prev_yearも候補）
+    best_diff = min(diff_this, diff_next, diff_prev)
+    if best_diff == diff_next:
+        return now.year + 1
+    elif best_diff == diff_prev and prev_year < now:  # 過去のprev_yearのみ
+        return now.year - 1
+    return now.year
+
+
+def parse_mmdd_to_date(mmdd_str: str, now: datetime, is_end: bool = False) -> datetime | None:
+    """
+    "MM/DD" または "MM/DD HH:MM" 形式の文字列を datetime に変換する。
+    年はresolve_month_to_yearで自動決定。
+    is_end=True の場合、翌日0時（終端日を含む検索に使用）。
+    """
+    m = re.match(r"^(\d{1,2})/(\d{1,2})", mmdd_str)
+    if not m:
+        return None
+    month, day = int(m.group(1)), int(m.group(2))
+    year = resolve_month_to_year(month, day, now)
+    dt = datetime(year, month, day, 0, 0, tzinfo=now.tzinfo)
+    if is_end:
+        dt = dt + timedelta(days=1)
+    return dt
+

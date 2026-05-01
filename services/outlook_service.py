@@ -102,23 +102,17 @@ async def find_outlook_events_in_range(range_start: str, range_end: str) -> list
     calendarView APIを使用（$filterより確実）
     range_start/range_end: MM/DD HH:MM 形式 or ISO形式
     """
-    import re as _re
+    from utils.date_parser import parse_mmdd_to_date
     now = datetime.now(JST)
 
-    def _parse_dt(date_str: str, is_end: bool = False) -> str:
-        m = _re.match(r"^(\d{1,2})/(\d{1,2})", date_str)
-        if m:
-            month, day = int(m.group(1)), int(m.group(2))
-            year = now.year if month >= now.month - 6 else now.year + 1
-            from datetime import timedelta as _td
-            dt = datetime(year, month, day, 0, 0)
-            if is_end:
-                dt = dt + _td(days=1)  # 終端日の翌日00時にして終端日を含める
+    def _resolve(date_str: str, is_end: bool) -> str:
+        dt = parse_mmdd_to_date(date_str, now, is_end=is_end)
+        if dt:
             return dt.strftime("%Y-%m-%dT%H:%M:%S")
-        return date_str[:19]  # ISO形式なら先頭19文字
+        return date_str[:19]
 
-    t_min = _parse_dt(range_start, is_end=False)
-    t_max = _parse_dt(range_end, is_end=True)
+    t_min = _resolve(range_start, is_end=False)
+    t_max = _resolve(range_end, is_end=True)
 
     # calendarView APIを使用（日付範囲の正確な検索に最適）
     url = f"{GRAPH_API_BASE}/users/{config.OUTLOOK_USER_EMAIL}/calendarView"
@@ -135,6 +129,7 @@ async def find_outlook_events_in_range(range_start: str, range_end: str) -> list
     events = r.json().get("value", [])
     logger.info(f"Outlook calendarView: {t_min}〜{t_max} → {len(events)}件")
     return events
+
 
 
 

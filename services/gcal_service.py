@@ -12,6 +12,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 import config
+from utils.date_parser import parse_mmdd_to_date
 
 logger = logging.getLogger("gcal_service")
 
@@ -123,26 +124,16 @@ async def find_gcal_events_in_range(range_start: str, range_end: str, inclusive_
     range_start/range_end: MM/DD HH:MM 形式 or ISO形式
     inclusive_end=True: 終端日の当日のイベントも含める（翌日0時まで検索）
     """
-    import re as _re
-    from datetime import timedelta as _td
     now = datetime.now(JST)
 
-    def _parse_date(date_str: str, is_end: bool = False) -> str:
-        """MM/DD HH:MM 形式またはISO形式をISOに変換"""
-        if not date_str:
-            return None
-        m = _re.match(r"^(\d{1,2})/(\d{1,2})", date_str)
-        if m:
-            month, day = int(m.group(1)), int(m.group(2))
-            year = now.year if month >= now.month - 6 else now.year + 1
-            dt = datetime(year, month, day, 0, 0, tzinfo=JST)
-            if is_end and inclusive_end:
-                dt = dt + _td(days=1)  # 終端日の翌日0時 → 終端日を含める
+    def _resolve(date_str: str, is_end: bool) -> str:
+        dt = parse_mmdd_to_date(date_str, now, is_end=is_end if inclusive_end else False)
+        if dt:
             return dt.isoformat()
-        return date_str  # すでにISO形式ならそのまま返す
+        return date_str  # すでにISO形式
 
-    time_min = _parse_date(range_start, is_end=False)
-    time_max = _parse_date(range_end, is_end=True)
+    time_min = _resolve(range_start, is_end=False)
+    time_max = _resolve(range_end, is_end=True)
 
     if not time_min or not time_max:
         return []
