@@ -220,14 +220,16 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
         if not range_start or not range_end:
             return {"action": "delete", "status": "skip", "reason": "一括削除には範囲（range_start〜range_end）が必要です"}
 
-        gcal_events = await find_gcal_events_in_range(range_start, range_end)
+        gcal_events = await find_gcal_events_in_range(range_start, range_end, inclusive_end=True)
         if not gcal_events:
             return {"action": "delete", "status": "skip", "reason": f"{range_start}〜{range_end} の範囲に予定が見つかりませんでした"}
 
         deleted_count = 0
+        deleted_titles = []
         for event in gcal_events:
             ev_id = event.get("id", "")
             ev_title = event.get("summary", "予定")
+            ev_start = event.get("start", {}).get("dateTime") or event.get("start", {}).get("date", "")
             if ev_id:
                 await delete_gcal_event(ev_id)
                 await append_event_index(
@@ -235,17 +237,19 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
                     event_id=ev_id,
                     action="delete",
                     title=ev_title,
-                    start_at=event.get("start", {}).get("dateTime", ""),
+                    start_at=ev_start,
                     end_at=event.get("end", {}).get("dateTime", ""),
                     line_to=line_to,
                     outlook_event_id="",
                 )
                 deleted_count += 1
+                deleted_titles.append((ev_title, ev_start))
 
         return {
             "action": "delete",
             "status": "ok",
             "deleted_count": deleted_count,
+            "deleted_titles": deleted_titles,
             "range": f"{range_start}〜{range_end}",
         }
 

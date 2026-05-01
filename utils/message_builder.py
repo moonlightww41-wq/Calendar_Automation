@@ -105,10 +105,19 @@ def build_reply_message(results: dict) -> str:
             if deleted_count is not None:
                 # 一括削除
                 date_range = result.get("range", "")
+                deleted_titles = result.get("deleted_titles", [])
+                title_lines = ""
+                if deleted_titles:
+                    lines = []
+                    for title, start in deleted_titles:
+                        date_str = _format_datetime(start) if start and "T" in str(start) else start or ""
+                        lines.append(f"  ・{title}（{date_str}）" if date_str else f"  ・{title}")
+                    title_lines = "\n" + "\n".join(lines) + "\n"
                 messages.append(
                     f"🗑️ {deleted_count}件の予定を削除しました\n\n"
-                    f"📅 期間：{date_range}\n\n"
-                    f"Google両方から削除済み"
+                    f"📅 期間：{date_range}\n"
+                    f"{title_lines}\n"
+                    f"Googleカレンダーから削除済み"
                 )
             else:
                 # 単件削除

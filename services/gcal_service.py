@@ -117,15 +117,17 @@ async def delete_gcal_event(event_id: str):
             raise
 
 
-async def find_gcal_events_in_range(range_start: str, range_end: str) -> list:
+async def find_gcal_events_in_range(range_start: str, range_end: str, inclusive_end: bool = False) -> list:
     """
     指定期間内の全イベントを取得する（一括削除用）
     range_start/range_end: MM/DD HH:MM 形式 or ISO形式
+    inclusive_end=True: 終端日の当日のイベントも含める（翌日0時まで検索）
     """
     import re as _re
+    from datetime import timedelta as _td
     now = datetime.now(JST)
 
-    def _parse_date(date_str: str) -> str:
+    def _parse_date(date_str: str, is_end: bool = False) -> str:
         """MM/DD HH:MM 形式またはISO形式をISOに変換"""
         if not date_str:
             return None
@@ -133,11 +135,14 @@ async def find_gcal_events_in_range(range_start: str, range_end: str) -> list:
         if m:
             month, day = int(m.group(1)), int(m.group(2))
             year = now.year if month >= now.month - 6 else now.year + 1
-            return datetime(year, month, day, 0, 0, tzinfo=JST).isoformat()
+            dt = datetime(year, month, day, 0, 0, tzinfo=JST)
+            if is_end and inclusive_end:
+                dt = dt + _td(days=1)  # 終端日の翌日0時 → 終端日を含める
+            return dt.isoformat()
         return date_str  # すでにISO形式ならそのまま返す
 
-    time_min = _parse_date(range_start)
-    time_max = _parse_date(range_end)
+    time_min = _parse_date(range_start, is_end=False)
+    time_max = _parse_date(range_end, is_end=True)
 
     if not time_min or not time_max:
         return []
