@@ -99,6 +99,7 @@ async def delete_outlook_event(event_id: str):
 async def find_outlook_events_in_range(range_start: str, range_end: str) -> list:
     """
     指定期間内のOutlookイベントを全件取得（一括削除用）
+    calendarView APIを使用（$filterより確実）
     range_start/range_end: MM/DD HH:MM 形式 or ISO形式
     """
     import re as _re
@@ -114,21 +115,27 @@ async def find_outlook_events_in_range(range_start: str, range_end: str) -> list
             if is_end:
                 dt = dt + _td(days=1)  # 終端日の翌日00時にして終端日を含める
             return dt.strftime("%Y-%m-%dT%H:%M:%S")
-        return date_str[:19]  # ISO形式なら先頤19文字
+        return date_str[:19]  # ISO形式なら先頭19文字
 
     t_min = _parse_dt(range_start, is_end=False)
     t_max = _parse_dt(range_end, is_end=True)
 
+    # calendarView APIを使用（日付範囲の正確な検索に最適）
+    url = f"{GRAPH_API_BASE}/users/{config.OUTLOOK_USER_EMAIL}/calendarView"
     params = {
-        "$filter": f"start/dateTime ge '{t_min}' and start/dateTime le '{t_max}'",
-        "$top": 250,
+        "startDateTime": t_min,
+        "endDateTime": t_max,
         "$select": "id,subject,start,end",
+        "$top": 250,
     }
-    r = requests.get(_cal_url(), headers=_headers(), params=params)
+    r = requests.get(url, headers=_headers(), params=params)
     if r.status_code != 200:
-        logger.warning(f"Outlook期間検索失敗: {r.status_code}")
+        logger.warning(f"Outlook期間検索失敗: {r.status_code} {r.text[:200]}")
         return []
-    return r.json().get("value", [])
+    events = r.json().get("value", [])
+    logger.info(f"Outlook calendarView: {t_min}〜{t_max} → {len(events)}件")
+    return events
+
 
 
 async def find_outlook_event(title_hint="", start_iso=None) -> dict | None:
