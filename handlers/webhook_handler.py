@@ -132,13 +132,19 @@ async def handle_line_webhook(body: bytes, signature: str):
                 line_to=line_to,
             )
 
-            # ── LINE 返信 ──
+            # ── LINE 返信（グループまたは個人チャット） ──
             reply_text = build_reply_message(results)
             if reply_token:
                 await reply_message(reply_token, reply_text)
             else:
-                # replyTokenがない場合はpushで送る
                 await push_message(line_to, reply_text)
+
+            # ── 個別通知（NOTIFY_USER_ID が設定済みかつ送信元以外の場合） ──
+            notify_uid = config.NOTIFY_USER_ID
+            if notify_uid and notify_uid != line_to:
+                notify_text = f"🔔 グループ処理完了\n\n{reply_text}"
+                await push_message(notify_uid, notify_text)
+                logger.info(f"[{request_id}] 個別通知送信完了（{notify_uid[:10]}...）")
 
             logger.info(f"[{request_id}] 完了")
 

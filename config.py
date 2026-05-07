@@ -13,6 +13,8 @@ load_dotenv(override=True)
 # --- LINE Bot ---
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
+# 処理完了通知を個別に送る先のUserID（U始まり）。空欄なら通知しない
+NOTIFY_USER_ID = os.getenv("NOTIFY_USER_ID", "")
 
 # --- OpenAI ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
