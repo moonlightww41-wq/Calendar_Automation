@@ -26,8 +26,8 @@ logger = logging.getLogger("webhook")
 def verify_signature(body: bytes, signature: str) -> bool:
     """LINE署名を検証する"""
     channel_secret = config.LINE_CHANNEL_SECRET
-    if not channel_secret:
-        logger.warning("LINE_CHANNEL_SECRETが未設定のため署名検証をスキップ")
+    if not channel_secret or channel_secret == "PLACEHOLDER":
+        logger.warning("LINE_CHANNEL_SECRETが未設定またはPLACEHOLDERのため署名検証をスキップ")
         return True
     if not signature:
         return False
