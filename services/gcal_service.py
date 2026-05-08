@@ -44,8 +44,25 @@ async def add_gcal_event(
     title: str, start_at: str, end_at: str,
     location: str = None, description: str = None,
 ) -> dict:
-    """Google Calendarに予定を追加する"""
+    """Google Calendarに予定を追加する（重複チェックあり）"""
     service = _get_service()
+
+    # ── 重複チェック（同タイトル・同日にすでに存在する場合はスキップ） ──
+    try:
+        day_start = start_at[:10] + "T00:00:00+09:00"
+        day_end   = start_at[:10] + "T23:59:59+09:00"
+        existing = service.events().list(
+            calendarId=config.GOOGLE_CALENDAR_ID,
+            timeMin=day_start,
+            timeMax=day_end,
+            singleEvents=True,
+        ).execute().get("items", [])
+        dups = [e for e in existing if e.get("summary", "") == title]
+        if dups:
+            logger.warning(f"GCal重複スキップ: '{title}' は同日に既に{len(dups)}件存在")
+            return dups[0]  # 既存イベントを返す
+    except Exception as e:
+        logger.warning(f"GCal重複チェック失敗（登録は続行）: {e}")
 
     event_body = {
         "summary": title,

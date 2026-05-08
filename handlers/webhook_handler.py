@@ -93,7 +93,13 @@ async def handle_line_webhook(body: bytes, signature: str):
             line_to = user_id
 
         request_id = generate_request_id()
-        logger.info(f"[{request_id}] 受信: {text[:50]}...")
+        # ─ 送信元情報をログに記録（groupId特定用）─
+        logger.info(
+            f"[{request_id}] 受信: {text[:50]}... "
+            f"| source_type={source_type} "
+            f"| line_to={line_to} "
+            f"| user_id={user_id}"
+        )
 
         # ── DateGate: 日付を含まないメッセージはスキップ ──
         if not contains_date(text):

@@ -55,6 +55,34 @@ def _to_graph_dt(iso_str: str) -> dict:
 
 
 async def add_outlook_event(title, start_at, end_at, location=None, description=None) -> dict:
+    """Outlookに予定を追加（重複チェックあり）"""
+    import httpx
+
+    # ── 重複チェック（同タイトル・同日にすでに存在する場合はスキップ） ──
+    try:
+        from datetime import datetime, timezone, timedelta
+        # 入力時刻をUTCに変換して当日範囲を決定
+        dt = datetime.fromisoformat(start_at)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone(timedelta(hours=9)))
+        day_utc_start = (dt.replace(hour=0, minute=0, second=0).astimezone(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        day_utc_end   = (dt.replace(hour=23, minute=59, second=59).astimezone(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        check_url = (
+            f"https://graph.microsoft.com/v1.0/users/{config.OUTLOOK_USER_EMAIL}/calendarView"
+            f"?startDateTime={day_utc_start}&endDateTime={day_utc_end}"
+            f"&$select=id,subject&$top=50"
+        )
+        async with httpx.AsyncClient() as c:
+            r_chk = await c.get(check_url, headers=_headers())
+        if r_chk.status_code == 200:
+            existing = r_chk.json().get("value", [])
+            dups = [e for e in existing if e.get("subject", "") == title]
+            if dups:
+                logger.warning(f"Outlook重複スキップ: '{title}' は同日に既に{len(dups)}件存在")
+                return dups[0]
+    except Exception as e:
+        logger.warning(f"Outlook重複チェック失敗（登録は続行）: {e}")
+
     body = {"subject": title, "start": _to_graph_dt(start_at), "end": _to_graph_dt(end_at)}
     if location:
         body["location"] = {"displayName": location}
