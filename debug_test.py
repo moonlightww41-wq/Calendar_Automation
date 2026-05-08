@@ -273,7 +273,8 @@ async def run_tests():
             if is_multi:
                 print(f"       複数操作: {len(ops)}件")
                 for i, op in enumerate(ops):
-                    print(f"         [{i}] action={op.get('action')}, title={op.get('title')}, hint={op.get('query',{}).get('title_hint','')}")
+                    q = op.get('query') or {}
+                    print(f"         [{i}] action={op.get('action')}, title={op.get('title')}, hint={q.get('title_hint','')}")
             for name, ok, msg in checks:
                 if not ok:
                     print(f"       ⚠️  {name}: {msg}")
