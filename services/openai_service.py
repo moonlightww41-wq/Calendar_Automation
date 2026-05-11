@@ -130,6 +130,12 @@ recurrenceフィールドを追加する。
 recurrenceフィールドは定例イベントの場合のみ設定する。
 通常の単発イベントではrecurrenceはnullまたは省略。
 
+## 削除のルール
+- 定例イベントを「すべて削除」「以降すべて削除」と言われた場合:
+  action: "delete", delete_all_in_range: true とし、
+  query.title_hint に予定名を含める。
+  期間が指定されていない場合は、range_startに今日の日付("MM/DD")、range_endに"12/31"を指定する。
+
 ## 実例
 
 入力: 「来週火曜の現場視察、流れたから消しといて」
@@ -148,6 +154,9 @@ recurrenceフィールドは定例イベントの場合のみ設定する。
 入力: 「毎週火曜と木曜 9時から定例ミーティング」
 → operations に2つ: 火曜分と木曜分をそれぞれ別エントリで出力
    各エントリに recurrence: {"freq": "WEEKLY", "byday": ["TU"], "interval": 1} など
+
+入力: 「毎週月曜日の定例打ち合わせをすべて削除して」
+→ action: "delete", query.title_hint: "定例打ち合わせ", query.range_start: 今日の日付, query.range_end: "12/31", delete_all_in_range: true
 
 入力: 「今日は在宅やわ」
 → action: "noop"（予定の操作ではない）

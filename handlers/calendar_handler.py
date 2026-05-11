@@ -64,6 +64,37 @@ async def execute_calendar_operations(
     return {"results": results, "request_id": request_id}
 
 
+def _adjust_start_at(start_at: str, end_at: str, recurrence: dict) -> tuple[str, str]:
+    """定例イベントの場合、指定曜日になるよう開始日を未来にずらす"""
+    if not start_at or not recurrence or recurrence.get("freq", "").upper() != "WEEKLY":
+        return start_at, end_at
+    byday = recurrence.get("byday", [])
+    if not byday:
+        return start_at, end_at
+    if isinstance(byday, str):
+        byday = [byday]
+    day_map = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
+    target_days = [day_map[d.upper()] for d in byday if d.upper() in day_map]
+    if not target_days:
+        return start_at, end_at
+
+    from datetime import datetime, timedelta
+    try:
+        dt = datetime.fromisoformat(start_at)
+        wd = dt.weekday()
+        days_ahead = [(td - wd) % 7 for td in target_days]
+        shift_days = min(days_ahead)
+        if shift_days > 0:
+            dt += timedelta(days=shift_days)
+            start_at = dt.isoformat()
+            if end_at:
+                edt = datetime.fromisoformat(end_at) + timedelta(days=shift_days)
+                end_at = edt.isoformat()
+    except Exception:
+        pass
+    return start_at, end_at
+
+
 async def _handle_add(op: dict, user_id: str, line_to: str) -> dict:
     """予定を追加する（Google + Outlook 両方）"""
     title = op.get("title") or "予定"
@@ -72,6 +103,8 @@ async def _handle_add(op: dict, user_id: str, line_to: str) -> dict:
     location = op.get("location")
     description = op.get("description")
     recurrence = op.get("recurrence")  # 定例イベント情報
+
+    start_at, end_at = _adjust_start_at(start_at, end_at, recurrence)
 
     # Google Calendar に追加
     gcal_event = await add_gcal_event(
@@ -224,6 +257,16 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
     if delete_all:
         range_start = query.get("range_start", "")
         range_end = query.get("range_end", "")
+
+        # 範囲が省略されていて、かつ予定名が指定されている場合は、今日〜年末をデフォルトとする
+        if (not range_start or not range_end) and title_hint:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            JST = ZoneInfo("Asia/Tokyo")
+            now = datetime.now(JST)
+            range_start = range_start or f"{now.month}/{now.day}"
+            range_end = range_end or "12/31"
+
         if not range_start or not range_end:
             return {"action": "delete", "status": "skip", "reason": "一括削除には範囲（range_start〜range_end）が必要です"}
 
@@ -242,10 +285,13 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
         deleted_count = 0
         deleted_titles = []
 
-        # Googleカレンダーから全件削除
+        # Googleカレンダーから削除（title_hintがあれば一致するもののみ）
         for event in gcal_events:
             ev_id = event.get("id", "")
             ev_title = event.get("summary", "予定")
+            if title_hint and title_hint not in ev_title and ev_title not in title_hint:
+                continue
+
             ev_start = event.get("start", {}).get("dateTime") or event.get("start", {}).get("date", "")
             if ev_id:
                 await delete_gcal_event(ev_id)
@@ -262,10 +308,13 @@ async def _handle_delete(op: dict, user_id: str, line_to: str) -> dict:
                 deleted_count += 1
                 deleted_titles.append((ev_title, ev_start))
 
-        # Outlookカレンダーから全件削除（Googleと独立して実行）
+        # Outlookカレンダーから削除（Googleと独立して実行・title_hintがあれば一致するもののみ）
         for ov in outlook_events:
             ov_id = ov.get("id", "")
             ov_title = ov.get("subject", "予定")
+            if title_hint and title_hint not in ov_title and ov_title not in title_hint:
+                continue
+
             ov_start = ov.get("start", {}).get("dateTime", "")
             if ov_id:
                 try:
