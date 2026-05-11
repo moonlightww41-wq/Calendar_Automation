@@ -40,11 +40,51 @@ def _get_service():
     return _service
 
 
+def _build_rrule(recurrence: dict, start_at: str) -> str | None:
+    """
+    AI出力のrecurrence辞書からRRULE文字列を構築する。
+    終了日は開始日と同じ年の12月31日。
+    """
+    freq = recurrence.get("freq", "").upper()
+    if freq not in ("WEEKLY", "MONTHLY", "DAILY"):
+        return None
+
+    try:
+        year = int(start_at[:4])
+    except (ValueError, IndexError):
+        year = datetime.now(JST).year
+    until = f"{year}1231T235959Z"
+
+    parts = [f"RRULE:FREQ={freq}"]
+
+    byday = recurrence.get("byday", [])
+    if byday and freq == "WEEKLY":
+        if isinstance(byday, str):
+            byday = [byday]
+        parts.append(f"BYDAY={','.join(byday)}")
+
+    bymonthday = recurrence.get("bymonthday")
+    if bymonthday and freq == "MONTHLY":
+        parts.append(f"BYMONTHDAY={bymonthday}")
+
+    interval = recurrence.get("interval", 1)
+    if interval and interval > 1:
+        parts.append(f"INTERVAL={interval}")
+
+    parts.append(f"UNTIL={until}")
+
+    return ";".join(parts)
+
+
 async def add_gcal_event(
     title: str, start_at: str, end_at: str,
     location: str = None, description: str = None,
+    recurrence: dict = None,
 ) -> dict:
-    """Google Calendarに予定を追加する（重複チェックあり）"""
+    """
+    Google Calendarに予定を追加する（重複チェックあり）
+    recurrenceが指定された場合、年末までの定期イベントとして登録する
+    """
     service = _get_service()
 
     # ── 重複チェック（同タイトル・同日にすでに存在する場合はスキップ） ──
@@ -74,12 +114,20 @@ async def add_gcal_event(
     if description:
         event_body["description"] = description
 
+    # ── 定例イベント: RRULE を構築 ──
+    if recurrence:
+        rrule = _build_rrule(recurrence, start_at)
+        if rrule:
+            event_body["recurrence"] = [rrule]
+            logger.info(f"GCal定例ルール: {rrule}")
+
     event = service.events().insert(
         calendarId=config.GOOGLE_CALENDAR_ID,
         body=event_body,
     ).execute()
 
-    logger.info(f"GCal追加: {title} ({event.get('id')})")
+    label = "GCal定例追加" if recurrence else "GCal追加"
+    logger.info(f"{label}: {title} ({event.get('id')})")
     return event
 
 

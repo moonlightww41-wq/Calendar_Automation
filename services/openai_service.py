@@ -71,6 +71,25 @@ SYSTEM_PROMPT = """あなたは日本語のビジネスチャットを読み取�
   - 悪い例: "現場視察 04/21", "定例会議 金曜" ← 日付を混ぜない！
 - **range_start**: 変更・削除対象の旧日時を "MM/DD HH:MM" 形式で。時刻不明なら "MM/DD 00:00"
 
+## 定例（繰り返し）イベントのルール
+
+「毎週」「毎月」「毎日」「定例」などのキーワードがある場合、
+recurrenceフィールドを追加する。
+
+### 認識パターン
+- 「毎週月曜」「毎週火曜と木曜」→ freq: "WEEKLY", byday: ["MO"] or ["TU","TH"]
+- 「毎月15日」「毎月第2月曜」→ freq: "MONTHLY", bymonthday: 15
+- 「毎日」→ freq: "DAILY"
+- 「定例」「定期」「レギュラー」→ 文脈から毎週と推定
+- 「隔週」→ freq: "WEEKLY", interval: 2
+
+### 曜日コード
+月=MO, 火=TU, 水=WE, 木=TH, 金=FR, 土=SA, 日=SU
+
+### start_atの決め方
+- 定例の場合、start_atは「今日以降で最初に来るその曜日」にする
+- 例: 今日が水曜で「毎週月曜」→ 来週月曜の日付
+
 ## 出力形式（JSON）
 
 {
@@ -85,6 +104,11 @@ SYSTEM_PROMPT = """あなたは日本語のビジネスチャットを読み取�
       "all_day": false,
       "location": "場所（あれば）",
       "description": "補足（あれば）",
+      "recurrence": {
+        "freq": "WEEKLY",
+        "byday": ["MO"],
+        "interval": 1
+      },
       "query": {
         "title_hint": "検索キーワード（日付を含めない予定名のみ）",
         "range_start": "MM/DD HH:MM",
@@ -103,6 +127,9 @@ SYSTEM_PROMPT = """あなたは日本語のビジネスチャットを読み取�
   "notes": null
 }
 
+recurrenceフィールドは定例イベントの場合のみ設定する。
+通常の単発イベントではrecurrenceはnullまたは省略。
+
 ## 実例
 
 入力: 「来週火曜の現場視察、流れたから消しといて」
@@ -114,6 +141,14 @@ SYSTEM_PROMPT = """あなたは日本語のビジネスチャットを読み取�
 入力: 「5/15 15時 A社訪問（東京）」
 → action: "add", title: "A社訪問", start_at: 2026-05-15T15:00:00+09:00, location: "東京"
 
+入力: 「毎週月曜12時-14時半で打ち合わせ」
+→ action: "add", title: "打ち合わせ", start_at: 次の月曜12:00, end_at: 同日14:30,
+   recurrence: {"freq": "WEEKLY", "byday": ["MO"], "interval": 1}
+
+入力: 「毎週火曜と木曜 9時から定例ミーティング」
+→ operations に2つ: 火曜分と木曜分をそれぞれ別エントリで出力
+   各エントリに recurrence: {"freq": "WEEKLY", "byday": ["TU"], "interval": 1} など
+
 入力: 「今日は在宅やわ」
 → action: "noop"（予定の操作ではない）
 
@@ -123,6 +158,7 @@ SYSTEM_PROMPT = """あなたは日本語のビジネスチャットを読み取�
 - 日時はすべて +09:00（日本時間）
 - 予定名が不明な場合は "予定" とする
 - カレンダー操作と無関係な文は noop
+- 定例イベントの場合、recurrenceフィールドを必ず設定する
 """
 
 

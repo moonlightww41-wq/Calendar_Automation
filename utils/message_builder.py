@@ -70,10 +70,15 @@ def build_reply_message(results: dict) -> str:
             time_range = _format_time_range(
                 result.get("start_at", ""), result.get("end_at", "")
             )
+            recurrence = result.get("recurrence")
+            recurrence_line = ""
+            if recurrence:
+                recurrence_line = f"\n🔁 {_format_recurrence(recurrence)}"
             messages.append(
                 f"✅ 予定を登録しました\n\n"
                 f"{time_range}\n"
-                f"📝 {title}\n\n"
+                f"📝 {title}"
+                f"{recurrence_line}\n\n"
                 f"Google・Outlook 両方に登録済み"
             )
 
@@ -152,3 +157,40 @@ def _action_label(action: str) -> str:
         "delete": "削除",
     }
     return labels.get(action, "操作")
+
+def _format_recurrence(recurrence: dict) -> str:
+    """定例情報を日本語表示に変換する"""
+    if not recurrence:
+        return ""
+
+    freq = recurrence.get("freq", "").upper()
+    interval = recurrence.get("interval", 1) or 1
+
+    # 頻度
+    freq_map = {"WEEKLY": "毎週", "MONTHLY": "毎月", "DAILY": "毎日"}
+    freq_label = freq_map.get(freq, freq)
+    if interval > 1 and freq == "WEEKLY":
+        freq_label = f"隔週" if interval == 2 else f"{interval}週ごと"
+
+    # 曜日
+    day_map = {"MO": "月", "TU": "火", "WE": "水", "TH": "木", "FR": "金", "SA": "土", "SU": "日"}
+    byday = recurrence.get("byday", [])
+    if isinstance(byday, str):
+        byday = [byday]
+    day_label = ""
+    if byday:
+        day_names = [day_map.get(d, d) for d in byday]
+        day_label = "・".join(day_names) + "曜"
+
+    # 月日
+    bymonthday = recurrence.get("bymonthday")
+    day_of_month = f"{bymonthday}日" if bymonthday else ""
+
+    parts = [freq_label]
+    if day_label:
+        parts.append(day_label)
+    if day_of_month:
+        parts.append(day_of_month)
+    parts.append("/ 年末まで")
+
+    return " ".join(parts)

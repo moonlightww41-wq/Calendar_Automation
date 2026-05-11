@@ -71,6 +71,7 @@ async def _handle_add(op: dict, user_id: str, line_to: str) -> dict:
     end_at = op.get("end_at")
     location = op.get("location")
     description = op.get("description")
+    recurrence = op.get("recurrence")  # 定例イベント情報
 
     # Google Calendar に追加
     gcal_event = await add_gcal_event(
@@ -79,6 +80,7 @@ async def _handle_add(op: dict, user_id: str, line_to: str) -> dict:
         end_at=end_at,
         location=location,
         description=description,
+        recurrence=recurrence,
     )
     gcal_event_id = gcal_event.get("id", "")
 
@@ -90,6 +92,7 @@ async def _handle_add(op: dict, user_id: str, line_to: str) -> dict:
             end_at=end_at,
             location=location,
             description=description,
+            recurrence=recurrence,
         )
         outlook_event_id = outlook_event.get("id", "")
     except Exception as e:
@@ -108,7 +111,7 @@ async def _handle_add(op: dict, user_id: str, line_to: str) -> dict:
         outlook_event_id=outlook_event_id,
     )
 
-    return {
+    result = {
         "action": "add",
         "status": "ok",
         "title": title,
@@ -117,6 +120,9 @@ async def _handle_add(op: dict, user_id: str, line_to: str) -> dict:
         "gcal_event_id": gcal_event_id,
         "outlook_event_id": outlook_event_id,
     }
+    if recurrence:
+        result["recurrence"] = recurrence
+    return result
 
 
 async def _handle_update(op: dict, user_id: str, line_to: str) -> dict:

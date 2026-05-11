@@ -54,7 +54,58 @@ def _to_graph_dt(iso_str: str) -> dict:
     return {"dateTime": dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": "Tokyo Standard Time"}
 
 
-async def add_outlook_event(title, start_at, end_at, location=None, description=None) -> dict:
+def _build_outlook_recurrence(recurrence: dict, start_at: str) -> dict | None:
+    """AI出力のrecurrence辞書からOutlook Graph API用のrecurrenceオブジェクトを構築する"""
+    freq = recurrence.get("freq", "").lower()
+    if freq not in ("weekly", "monthly", "daily"):
+        return None
+
+    try:
+        year = int(start_at[:4])
+    except (ValueError, IndexError):
+        year = datetime.now(JST).year
+
+    # range設定（年末まで）
+    start_date = start_at[:10]
+    end_date = f"{year}-12-31"
+
+    # 曜日のマッピング (MO -> monday, etc)
+    day_map = {"MO": "monday", "TU": "tuesday", "WE": "wednesday", "TH": "thursday", "FR": "friday", "SA": "saturday", "SU": "sunday"}
+
+    pattern = {
+        "type": freq,
+        "interval": recurrence.get("interval", 1) or 1
+    }
+
+    if freq == "weekly":
+        byday = recurrence.get("byday", [])
+        if isinstance(byday, str):
+            byday = [byday]
+        if byday:
+            pattern["daysOfWeek"] = [day_map.get(d.upper(), "monday") for d in byday]
+        else:
+            # 曜日指定がなければ開始日の曜日とする
+            dt = datetime.fromisoformat(start_at)
+            pattern["daysOfWeek"] = [["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"][dt.weekday()]]
+    elif freq == "monthly":
+        pattern["type"] = "absoluteMonthly"
+        pattern["dayOfMonth"] = recurrence.get("bymonthday", 1)
+
+    return {
+        "pattern": pattern,
+        "range": {
+            "type": "endDate",
+            "startDate": start_date,
+            "endDate": end_date
+        }
+    }
+
+
+async def add_outlook_event(
+    title: str, start_at: str, end_at: str,
+    location: str = None, description: str = None,
+    recurrence: dict = None,
+) -> dict:
     """Outlookに予定を追加（重複チェックあり）"""
     import httpx
 
@@ -89,10 +140,19 @@ async def add_outlook_event(title, start_at, end_at, location=None, description=
     if description:
         body["body"] = {"contentType": "text", "content": description}
 
+    # ── 定例イベント ──
+    if recurrence:
+        out_rec = _build_outlook_recurrence(recurrence, start_at)
+        if out_rec:
+            body["recurrence"] = out_rec
+            logger.info(f"Outlook定例ルール追加: {out_rec}")
+
     r = requests.post(_cal_url(), headers=_headers(), json=body)
     if r.status_code not in (200, 201):
-        raise RuntimeError(f"Outlook追加失敗: {r.status_code}")
-    logger.info(f"Outlook追加: {title}")
+        raise RuntimeError(f"Outlook追加失敗: {r.status_code} {r.text}")
+    
+    label = "Outlook定例追加" if recurrence else "Outlook追加"
+    logger.info(f"{label}: {title}")
     return r.json()
 
 
