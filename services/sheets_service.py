@@ -117,3 +117,26 @@ async def search_event_index(title_hint="", range_start="") -> dict | None:
 
     return None
 
+
+async def get_outlook_event_id_by_gcal_id(gcal_event_id: str) -> str:
+    """GoogleカレンダーのイベントIDから対応するOutlookイベントIDをEventIndexから取得する"""
+    if not gcal_event_id:
+        return ""
+    service = _get_service()
+    result = service.spreadsheets().values().get(
+        spreadsheetId=config.GOOGLE_SPREADSHEET_ID,
+        range=f"{config.EVENT_INDEX_SHEET}!A:I",
+    ).execute()
+    rows = result.get("values", [])
+    if not rows:
+        return ""
+
+    for row in reversed(rows[1:]):
+        if len(row) < 9:
+            continue
+        row_event_id = row[2]
+        row_outlook_event_id = row[8]
+        if row_event_id == gcal_event_id:
+            return row_outlook_event_id
+    return ""
+

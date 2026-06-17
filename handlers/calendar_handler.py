@@ -20,7 +20,7 @@ from services.outlook_service import (
     find_outlook_event,
     find_outlook_events_in_range,
 )
-from services.sheets_service import append_event_index, search_event_index
+from services.sheets_service import append_event_index, search_event_index, get_outlook_event_id_by_gcal_id
 
 logger = logging.getLogger("calendar_handler")
 
@@ -180,7 +180,8 @@ async def _handle_update(op: dict, user_id: str, line_to: str) -> dict:
         )
         if gcal_event:
             gcal_event_id = gcal_event.get("id", "")
-            outlook_event_id = ""
+            # 直接検索で見つかった場合は、逆引きで対応する outlook_event_id を探す
+            outlook_event_id = await get_outlook_event_id_by_gcal_id(gcal_event_id)
         else:
             return {
                 "action": "update",
@@ -188,8 +189,10 @@ async def _handle_update(op: dict, user_id: str, line_to: str) -> dict:
                 "reason": f"対象の予定が見つかりませんでした: {title_hint}",
             }
     else:
-        gcal_event_id = index_entry.get("event_id", "")
-        outlook_event_id = index_entry.get("outlook_event_id", "")
+        # 安全のため、リストで返ってきた場合でも対応できるようにする
+        target = index_entry[0] if isinstance(index_entry, list) else index_entry
+        gcal_event_id = target.get("event_id", "")
+        outlook_event_id = target.get("outlook_event_id", "")
 
     # 変更内容を組み立て
     new_title = patch.get("title") or op.get("title")
