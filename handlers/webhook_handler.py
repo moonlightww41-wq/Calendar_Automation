@@ -101,6 +101,69 @@ async def handle_line_webhook(body: bytes, signature: str):
             f"| user_id={user_id}"
         )
 
+        # ── 出張報告の自動解析とURL発行 ──
+        if "出張" in text:
+            logger.info(f"[{request_id}] 出張報告キーワード検出 → 解析開始")
+            try:
+                import httpx
+                import urllib.parse
+                
+                # Netlify Functions の解析APIを呼び出し
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.post(
+                        "https://travel-expense-report.netlify.app/.netlify/functions/ai-parse",
+                        json={"text": text}
+                    )
+                
+                if resp.status_code == 200:
+                    data = resp.json()
+                    trips_data = data.get("trips", [])
+                    if trips_data:
+                        trip = trips_data[0]
+                        dest = trip.get("dest", "")
+                        start = trip.get("startStr", "")
+                        end = trip.get("endStr", "")
+                        mode = trip.get("mode", "")
+                        
+                        # パラメータ付きURLの作成
+                        params = {
+                            "dest": dest,
+                            "start": start,
+                            "end": end,
+                            "mode": mode
+                        }
+                        query_string = urllib.parse.urlencode(params)
+                        url = f"https://travel-expense-report.netlify.app/?{query_string}"
+                        
+                        # 返信メッセージの構築
+                        reply_text = (
+                            f"🤖 出張報告をAIで解析しました！\n\n"
+                            f"📍 目的地: {dest}\n"
+                            f"📅 期間: {start} 〜 {end}\n"
+                            f"✈️ 交通: {mode}\n\n"
+                            f"以下のリンクをタップすると、自動で入力された状態で作成画面が開きます！\n"
+                            f"{url}"
+                        )
+                        
+                        if reply_token:
+                            await reply_message(reply_token, reply_text)
+                        else:
+                            await push_message(line_to, reply_text)
+                            
+                        logger.info(f"[{request_id}] 出張報告URL返信完了: {url}")
+                        continue
+            except Exception as e:
+                logger.error(f"[{request_id}] 出張報告解析でエラー: {e}", exc_info=True)
+                error_text = f"⚠️ 出張報告の解析中にエラーが発生しました。\n{str(e)}"
+                try:
+                    if reply_token:
+                        await reply_message(reply_token, error_text)
+                    else:
+                        await push_message(line_to, error_text)
+                except Exception:
+                    pass
+                continue
+
         # ── DateGate: 日付を含まないメッセージはスキップ ──
         if not contains_date(text):
             logger.info(f"[{request_id}] 日付なし → スキップ")
